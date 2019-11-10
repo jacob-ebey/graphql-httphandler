@@ -3,6 +3,7 @@ package httphandler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"net/http"
 	"net/url"
@@ -42,7 +43,7 @@ func getFromForm(values url.Values) *core.GraphQLRequest {
 	return nil
 }
 
-func NewGraphQLRequest(r *http.Request) core.GraphQLRequest {
+func newGraphQLRequest(r *http.Request) core.GraphQLRequest {
 	if reqOpt := getFromForm(r.URL.Query()); reqOpt != nil {
 		return *reqOpt
 	}
@@ -73,6 +74,7 @@ func NewGraphQLRequest(r *http.Request) core.GraphQLRequest {
 			return core.GraphQLRequest{}
 		}
 
+		fmt.Println(r.PostForm)
 		if reqOpt := getFromForm(r.PostForm); reqOpt != nil {
 			return *reqOpt
 		}
@@ -114,12 +116,12 @@ func (handler *GraphQLHttpHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	request := NewGraphQLRequest(r)
+	request := newGraphQLRequest(r)
 	result := handler.Executor.Execute(context.TODO(), request)
 
 	json, err := json.Marshal(result)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
