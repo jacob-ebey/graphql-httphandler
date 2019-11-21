@@ -116,8 +116,10 @@ func (handler *GraphQLHttpHandler) ServeHTTP(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
+	ctx := context.WithValue(r.Context(), "request", r)
+
 	request := newGraphQLRequest(r)
-	result := handler.Executor.Execute(context.TODO(), request)
+	result := handler.Executor.Execute(ctx, request)
 
 	json, err := json.Marshal(result)
 	if err != nil {
