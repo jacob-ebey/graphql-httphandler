@@ -7,15 +7,17 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	core "github.com/jacob-ebey/graphql-core"
 )
 
 const (
-	ContentTypeJSON           = "application/json"
-	ContentTypeGraphQL        = "application/graphql"
-	ContentTypeFormURLEncoded = "application/x-www-form-urlencoded"
+	ContentTypeJSON              = "application/json"
+	ContentTypeGraphQL           = "application/graphql"
+	ContentTypeFormURLEncoded    = "application/x-www-form-urlencoded"
+	ContentTypeMultipartFormData = "multipart/form-data"
 )
 
 // a workaround for getting`variables` as a JSON string
@@ -80,6 +82,88 @@ func newGraphQLRequest(r *http.Request) core.GraphQLRequest {
 		}
 
 		return core.GraphQLRequest{}
+	case ContentTypeMultipartFormData:
+		if err := r.ParseMultipartForm(1024 * 1024 * 16); err != nil {
+			// fmt.Printf("Parse Multipart Failed %v", err)
+			return core.GraphQLRequest{}
+		}
+
+		// @TODO handle array case...
+
+		operationsParam := r.FormValue("operations")
+		var opts core.GraphQLRequest
+		if err := json.Unmarshal([]byte(operationsParam), &opts); err != nil {
+			// fmt.Printf("Parse Operations Failed %v", err)
+			return core.GraphQLRequest{}
+		}
+
+		mapParam := r.FormValue("map")
+		mapValues := make(map[string]([]string))
+		if len(mapParam) != 0 {
+			if err := json.Unmarshal([]byte(mapParam), &mapValues); err != nil {
+				// fmt.Printf("Parse map Failed %v", err)
+				return core.GraphQLRequest{}
+			}
+		}
+
+		variables := opts
+
+		for key, value := range mapValues {
+			for _, v := range value {
+				if file, header, err := r.FormFile(key); err == nil {
+
+					// Now set the path in ther variables
+					var node interface{} = variables
+
+					parts := strings.Split(v, ".")
+					last := parts[len(parts)-1]
+
+					for _, vv := range parts[:len(parts)-1] {
+						// fmt.Printf("Doing vv=%s type=%T parts=%v\n", vv, node, parts)
+						switch node.(type) {
+						case core.GraphQLRequest:
+							if vv == "variables" {
+								node = opts.Variables
+							} else {
+								// panic("Invalid top level tag")
+								return core.GraphQLRequest{}
+							}
+						case map[string]interface{}:
+							node = node.(map[string]interface{})[vv]
+						case []interface{}:
+							if idx, err := strconv.ParseInt(vv, 10, 64); err == nil {
+								node = node.([]interface{})[idx]
+							} else {
+								// panic("Unable to lookup index")
+								return core.GraphQLRequest{}
+							}
+						default:
+							// panic(fmt.Errorf("Unknown type %T", node))
+							return core.GraphQLRequest{}
+						}
+					}
+
+					data := &core.MultipartFile{File: file, Header: header}
+
+					switch node.(type) {
+					case map[string]interface{}:
+						node.(map[string]interface{})[last] = data
+					case []interface{}:
+						if idx, err := strconv.ParseInt(last, 10, 64); err == nil {
+							node.([]interface{})[idx] = data
+						} else {
+							// panic("Unable to lookup index")
+							return core.GraphQLRequest{}
+						}
+					default:
+						// panic(fmt.Errorf("Unknown last type %T", node))
+						return core.GraphQLRequest{}
+					}
+				}
+			}
+		}
+
+		return opts
 
 	case ContentTypeJSON:
 		fallthrough
