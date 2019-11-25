@@ -91,7 +91,7 @@ func newGraphQLRequest(r *http.Request) core.GraphQLRequest {
 		// @TODO handle array case...
 
 		operationsParam := r.FormValue("operations")
-		var opts core.GraphQLRequest
+		opts := core.GraphQLRequest{}
 		if err := json.Unmarshal([]byte(operationsParam), &opts); err != nil {
 			// fmt.Printf("Parse Operations Failed %v", err)
 			return core.GraphQLRequest{}
